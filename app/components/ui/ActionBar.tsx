@@ -10,12 +10,14 @@ export default function ActionBar({
   output,
   hasResult,
   handleTranslate,
+  handleDownload,
 }: {
   mode: Mode;
   disabled: boolean;
   output: string;
   hasResult: boolean;
   handleTranslate: () => void;
+  handleDownload?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -29,24 +31,43 @@ export default function ActionBar({
         Translate
       </button>
 
-      {hasResult &&
-        (mode === "text" ? (
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(output);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="flex items-center gap-1 px-3 py-2 bg-gray-100 rounded-lg text-gray-800"
-          >
-            <Copy className="w-4 h-4 text-gray-800" />
-            {copied ? "Copied" : "Copy"}
-          </button>
-        ) : (
-          <button className="flex items-center gap-1 px-3 py-2 bg-gray-100 rounded-lg text-gray-800">
-            <Download className="w-4 h-4 text-gray-800" /> Download
-          </button>
-        ))}
+      {hasResult && (
+        <>
+          {mode === "text" && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(output);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="
+                flex items-center gap-1
+                px-3 py-2 rounded-lg
+                bg-gray-100 text-gray-800
+                hover:bg-gray-200
+              "
+            >
+              <Copy className="w-4 h-4" />
+              {copied ? "Copied" : "Copy"}
+            </button>
+          )}
+
+          {mode === "file" && handleDownload && (
+            <button
+              onClick={handleDownload}
+              className="
+                flex items-center gap-1
+                px-3 py-2 rounded-lg
+                bg-gray-100 text-gray-800
+                hover:bg-gray-200
+              "
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

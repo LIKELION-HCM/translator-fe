@@ -1,5 +1,6 @@
 "use client";
 
+import buildTranslatedFileName from "@/helper/buildTranslatedFileName";
 import api from "@/lib/api";
 import { ArrowLeftRight } from "lucide-react";
 import { useRef, useState } from "react";
@@ -24,7 +25,8 @@ export default function SmartTranslator() {
   const [outputText, setOutputText] = useState("");
 
   const [file, setFile] = useState<File | null>(null);
-  const [translatedFile, setTranslatedFile] = useState<File | null>(null);
+  const [originalFileName, setOriginalFileName] = useState<string | null>(null);
+  const [translatedFileId, setTranslatedFileId] = useState<string | null>(null);
 
   const [sourceLang, setSourceLang] = useState("detect");
   const [targetLang, setTargetLang] = useState("vietnamese");
@@ -32,7 +34,8 @@ export default function SmartTranslator() {
 
   const [isTranslating, setIsTranslating] = useState(false);
 
-  const canTranslate = mode === "text" ? inputText.trim() !== "" : !!file;
+  const canTranslate =
+    !isTranslating && (mode === "text" ? inputText.trim() !== "" : !!file);
 
   const swapLanguage = () => {
     if (sourceLang === "detect") {
@@ -77,18 +80,74 @@ export default function SmartTranslator() {
 
     setIsTranslating(true);
     setOutputText("");
-    setTranslatedFile(null);
 
     try {
-      const res = await api.post("/api/v1/translate/text", {
-        source_lang: sourceLang,
-        target_lang: targetLang,
-        text: inputText,
+      if (mode === "text") {
+        const res = await api.post("/api/v1/translate/text", {
+          source_lang: sourceLang,
+          target_lang: targetLang,
+          text: inputText,
+        });
+
+        setOutputText(res.data.translated_text);
+        return;
+      }
+
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await api.post("/api/v1/files/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
-      setOutputText(res.data.translated_text);
+      const fileId = uploadRes.data.file_id;
+      if (!fileId) throw new Error("Upload failed: no file_id");
+
+      const translateRes = await api.post(
+        `/api/v1/files/${fileId}/translate`,
+        null,
+        {
+          params: {
+            source: sourceLang,
+            target: targetLang,
+          },
+        },
+      );
+
+      setTranslatedFileId(translateRes.data.file_id);
+      setOriginalFileName(file?.name ?? null);
+    } catch (err) {
+      console.error("Translate failed", err);
     } finally {
       setIsTranslating(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!translatedFileId || !originalFileName) return;
+
+    try {
+      const res = await api.get(`/api/v1/files/${translatedFileId}/download`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = buildTranslatedFileName(originalFileName);
+      document.body.appendChild(a);
+      a.click();
+
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed", err);
     }
   };
 
@@ -120,7 +179,14 @@ export default function SmartTranslator() {
                   placeholder="Enter text"
                 />
               ) : (
-                <FilePanel file={file} onChange={setFile} />
+                <FilePanel
+                  file={file}
+                  onChange={(f) => {
+                    setFile(f);
+                    setOriginalFileName(null);
+                    setTranslatedFileId(null);
+                  }}
+                />
               )}
 
               <button
@@ -150,20 +216,26 @@ export default function SmartTranslator() {
                     placeholder="Translation"
                   />
                 )
+              ) : isTranslating ? (
+                <FileResultPanel loading />
               ) : (
-                <FileResultPanel file={translatedFile} />
+                <FileResultPanel
+                  fileId={translatedFileId}
+                  originalFileName={originalFileName}
+                />
               )}
             </div>
           </div>
 
           <ActionBar
             mode={mode}
-            disabled={!canTranslate}
+            disabled={!canTranslate || isTranslating}
             output={outputText}
             handleTranslate={handleTranslate}
             hasResult={
-              mode === "text" ? outputText?.trim() !== "" : !!translatedFile
+              mode === "text" ? !!outputText.trim() : !!translatedFileId
             }
+            handleDownload={handleDownload}
           />
         </div>
       </main>
